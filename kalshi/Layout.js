@@ -10,7 +10,6 @@ import {
   Cpu,
   Book
 } from 'lucide-react';
-import { createPageUrl } from '@/utils';
 
 export default function Layout({ children }) {
   const location = useLocation();
@@ -51,7 +50,7 @@ export default function Layout({ children }) {
             return (
               <Link
                 key={item.path}
-                to={createPageUrl(item.name === 'Dashboard' ? 'Home' : item.name.replace(' ', ''))}
+                to={item.path}
                 className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200 ${
                   isActive 
                     ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20' 

@@ -1,22 +1,28 @@
 import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Activity, ArrowUpRight, TrendingUp, AlertTriangle, FileText, Cpu, Clock, Bot, Microscope } from "lucide-react";
-import { base44 } from '@/api/base44Client';
+import { Activity, ArrowUpRight, TrendingUp, AlertTriangle, FileText, Cpu, Clock, Bot, Microscope, Wallet } from "lucide-react";
+import { kalshiClient } from '../api/kalshiClient';
 import { useQuery } from '@tanstack/react-query';
 import { format } from 'date-fns';
 
 export default function Home() {
   const { data: activeTrades } = useQuery({
     queryKey: ['activeTrades'],
-    queryFn: () => base44.entities.ActiveTrade.list(),
+    queryFn: () => kalshiClient.entities.ActiveTrade.list(),
     initialData: []
   });
 
   const { data: reports } = useQuery({
     queryKey: ['reports'],
-    queryFn: () => base44.entities.ResearchReport.list(),
+    queryFn: () => kalshiClient.entities.ResearchReport.list(),
     initialData: []
+  });
+
+  const { data: portfolio } = useQuery({
+    queryKey: ['portfolio'],
+    queryFn: () => kalshiClient.account.portfolio(),
+    refetchInterval: 10000,
   });
 
   return (
@@ -43,7 +49,7 @@ export default function Home() {
         {[
           { label: 'Active Arbs', value: activeTrades.length, icon: TrendingUp, color: 'text-emerald-400', sub: '2 pending fill' },
           { label: 'Research Queue', value: '3', icon: FileText, color: 'text-blue-400', sub: '1 processing' },
-          { label: 'Capital Deployed', value: '$4,250', icon: ArrowUpRight, color: 'text-purple-400', sub: '32% of liquidity' },
+          { label: 'Capital Deployed', value: portfolio?.total_value ? `$${portfolio.total_value}` : '$—', icon: ArrowUpRight, color: 'text-purple-400', sub: 'Live from Kalshi' },
           { label: 'System Uptime', value: '99.9%', icon: Clock, color: 'text-yellow-400', sub: 'Last restart: 4d ago' },
         ].map((stat, i) => (
           <Card key={i} className="bg-[#111214] border-gray-800">
@@ -163,6 +169,66 @@ export default function Home() {
               </Card>
             )}
           </div>
+        </div>
+
+        <div className="space-y-6">
+          <div className="flex items-center justify-between">
+            <h2 className="text-xl font-bold text-white flex items-center gap-2">
+              <Wallet className="w-5 h-5 text-emerald-500" />
+              Portfolio Health
+            </h2>
+          </div>
+          <Card className="bg-[#111214] border-gray-800">
+            <CardContent className="p-6 space-y-4">
+              <div className="grid grid-cols-2 gap-4 text-sm font-mono">
+                <div>
+                  <p className="text-gray-500">Buying Power</p>
+                  <p className="text-white text-xl">{portfolio?.buying_power ? `$${portfolio.buying_power}` : '—'}</p>
+                </div>
+                <div>
+                  <p className="text-gray-500">Cash</p>
+                  <p className="text-white text-xl">{portfolio?.cash ? `$${portfolio.cash}` : '—'}</p>
+                </div>
+                <div>
+                  <p className="text-gray-500">Margin Used</p>
+                  <p className="text-white text-xl">{portfolio?.margin ? `$${portfolio.margin}` : '—'}</p>
+                </div>
+                <div>
+                  <p className="text-gray-500">Leverage</p>
+                  <p className="text-white text-xl">{portfolio?.leverage ?? '—'}</p>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4 text-sm font-mono">
+                <div className="p-3 rounded-lg border border-gray-800 bg-gray-900/60">
+                  <p className="text-gray-500">Realized PnL</p>
+                  <p className={`text-xl ${portfolio?.pnl?.realized >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                    {portfolio?.pnl?.realized ?? '—'}
+                  </p>
+                </div>
+                <div className="p-3 rounded-lg border border-gray-800 bg-gray-900/60">
+                  <p className="text-gray-500">Unrealized PnL</p>
+                  <p className={`text-xl ${portfolio?.pnl?.unrealized >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                    {portfolio?.pnl?.unrealized ?? '—'}
+                  </p>
+                </div>
+              </div>
+              <div>
+                <p className="text-xs uppercase text-gray-500 mb-2">Recent Orders</p>
+                <div className="space-y-2 max-h-40 overflow-y-auto">
+                  {(portfolio?.open_orders ?? []).map((order, idx) => (
+                    <div key={order.order_id || idx} className="flex items-center justify-between text-xs text-gray-300 p-2 rounded border border-gray-800 bg-gray-900/60">
+                      <span className="font-mono text-emerald-400">{order.ticker}</span>
+                      <span className="font-mono">{order.side?.toUpperCase()} @ {order.price}c</span>
+                      <span className="text-gray-500">{order.status || 'submitted'}</span>
+                    </div>
+                  ))}
+                  {(portfolio?.open_orders ?? []).length === 0 && (
+                    <p className="text-gray-600 text-xs">No recent orders tracked.</p>
+                  )}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
         </div>
       </div>
     </div>
