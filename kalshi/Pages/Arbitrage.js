@@ -12,6 +12,10 @@ export default function Arbitrage() {
   const [isRunning, setIsRunning] = useState(true);
   const [selectedMarkets, setSelectedMarkets] = useState(new Set());
   const [executing, setExecuting] = useState(null);
+  const [maxPositionCents, setMaxPositionCents] = useState(50000);
+  const [minProfitCents, setMinProfitCents] = useState(10);
+  const [killSwitch, setKillSwitch] = useState(false);
+  const [toasts, setToasts] = useState([]);
 
   const { data: markets, isLoading } = useQuery({
     queryKey: ['markets'],
@@ -51,7 +55,34 @@ export default function Arbitrage() {
     };
   }).filter(o => o.isViable);
 
+  function pushToast({ title, description, variant = 'default' }) {
+    const id = crypto.randomUUID();
+    setToasts((prev) => [...prev, { id, title, description, variant }]);
+    setTimeout(() => {
+      setToasts((prev) => prev.filter((t) => t.id !== id));
+    }, 4500);
+  }
+
   async function handleExecute(opp) {
+    if (!isRunning) {
+      pushToast({ title: 'Engine paused', description: 'Resume engine before executing trades.', variant: 'warning' });
+      return;
+    }
+    if (killSwitch) {
+      pushToast({ title: 'Kill-switch active', description: 'Orders blocked until kill-switch is disabled.', variant: 'error' });
+      return;
+    }
+    if (opp.potential_profit < minProfitCents) {
+      pushToast({ title: 'Risk gate blocked', description: 'Opportunity below min profit threshold.', variant: 'warning' });
+      return;
+    }
+
+    const cost = opp.yes_price * 1;
+    if (cost > maxPositionCents) {
+      pushToast({ title: 'Position too large', description: `Cost ${cost}c exceeds cap ${maxPositionCents}c`, variant: 'error' });
+      return;
+    }
+
     setExecuting(opp.market_id);
     try {
       await kalshiClient.orders.place({
@@ -59,18 +90,24 @@ export default function Arbitrage() {
         side: 'yes',
         price: opp.yes_price,
         size: 1,
+        maxCostCents: maxPositionCents,
+        killSwitch,
       });
-      alert(`Submitted limit buy for ${opp.market_id} @ ${opp.yes_price}c`);
+      pushToast({
+        title: 'Order submitted',
+        description: `${opp.market_id} YES @ ${opp.yes_price}c`,
+        variant: 'success',
+      });
     } catch (err) {
       console.error(err);
-      alert('Failed to submit order. Check backend logs and credentials.');
+      pushToast({ title: 'Order failed', description: err?.message || 'Check backend logs and credentials.', variant: 'error' });
     } finally {
       setExecuting(null);
     }
   }
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto">
+    <div className="space-y-6 max-w-7xl mx-auto relative">
       <div className="flex justify-between items-center border-b border-gray-800 pb-6">
         <div>
           <h1 className="text-3xl font-bold text-white mb-2">Arbitrage Engine</h1>
@@ -222,18 +259,41 @@ export default function Arbitrage() {
               
               <div className="space-y-4">
                 <div className="space-y-2">
-                  <label className="text-xs text-gray-400 uppercase font-bold">Max Position Size ($)</label>
-                  <Input type="number" defaultValue={500} className="bg-[#0a0a0c] border-gray-700 text-white font-mono" />
+                  <label className="text-xs text-gray-400 uppercase font-bold">Max Position Size (cents)</label>
+                  <Input
+                    type="number"
+                    value={maxPositionCents}
+                    onChange={(e) => setMaxPositionCents(Number(e.target.value))}
+                    className="bg-[#0a0a0c] border-gray-700 text-white font-mono"
+                  />
                 </div>
-                
+
                 <div className="space-y-2">
                   <label className="text-xs text-gray-400 uppercase font-bold">Min Profit Margin (cents)</label>
-                  <Input type="number" defaultValue={10} className="bg-[#0a0a0c] border-gray-700 text-white font-mono" />
+                  <Input
+                    type="number"
+                    value={minProfitCents}
+                    onChange={(e) => setMinProfitCents(Number(e.target.value))}
+                    className="bg-[#0a0a0c] border-gray-700 text-white font-mono"
+                  />
                 </div>
 
                 <div className="space-y-2">
                   <label className="text-xs text-gray-400 uppercase font-bold">Max Hold Time (Hours)</label>
                   <Input type="number" defaultValue={48} className="bg-[#0a0a0c] border-gray-700 text-white font-mono" />
+                </div>
+
+                <div className="flex items-center justify-between p-3 rounded-lg border border-gray-800 bg-gray-900/40">
+                  <div>
+                    <p className="text-sm text-white font-semibold">Kill Switch</p>
+                    <p className="text-xs text-gray-500">Block any automated orders instantly.</p>
+                  </div>
+                  <input
+                    type="checkbox"
+                    className="h-5 w-5 text-red-500"
+                    checked={killSwitch}
+                    onChange={(e) => setKillSwitch(e.target.checked)}
+                  />
                 </div>
 
                 <div className="pt-4 border-t border-gray-800">
@@ -249,6 +309,30 @@ export default function Arbitrage() {
             </CardContent>
           </Card>
         </div>
+      </div>
+      <div className="fixed bottom-6 right-6 z-50 space-y-2 w-80">
+        <AnimatePresence>
+          {toasts.map((toast) => (
+            <motion.div
+              key={toast.id}
+              initial={{ opacity: 0, x: 50 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 50 }}
+              className={`p-4 rounded-lg border shadow-lg bg-gray-900/95 backdrop-blur text-white font-mono text-sm border-gray-800 ${
+                toast.variant === 'success'
+                  ? 'border-emerald-500/50'
+                  : toast.variant === 'error'
+                  ? 'border-red-500/50'
+                  : toast.variant === 'warning'
+                  ? 'border-yellow-500/50'
+                  : ''
+              }`}
+            >
+              <div className="font-semibold">{toast.title}</div>
+              <div className="text-gray-400 text-xs mt-1">{toast.description}</div>
+            </motion.div>
+          ))}
+        </AnimatePresence>
       </div>
     </div>
   );

@@ -1,6 +1,10 @@
 import express from 'express';
 import fetch from 'node-fetch';
 import dotenv from 'dotenv';
+import rateLimit from 'express-rate-limit';
+import { fileURLToPath } from 'url';
+import path from 'path';
+import { promises as fs } from 'fs';
 
 dotenv.config();
 
@@ -13,6 +17,16 @@ app.use((req, res, next) => {
   if (req.method === 'OPTIONS') return res.sendStatus(204);
   next();
 });
+app.use(
+  '/api',
+  rateLimit({
+    windowMs: 60 * 1000,
+    limit: 120,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: 'Rate limit exceeded. Please reduce request frequency.' },
+  })
+);
 
 const PORT = process.env.PORT || 4000;
 const API_BASE = process.env.KALSHI_API_BASE || 'https://trading-api.kalshi.com/v2';
@@ -22,6 +36,11 @@ const ALLOWED_CATEGORIES = (process.env.KALSHI_ALLOWED_CATEGORIES || 'sports,cry
   .split(',')
   .map((c) => c.trim().toLowerCase())
   .filter(Boolean);
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const DATA_DIR = path.join(__dirname, 'data');
+const DATA_PATH = path.join(DATA_DIR, 'state.json');
 
 const state = {
   logs: [
@@ -42,7 +61,36 @@ const state = {
     },
   ],
   focusedMarkets: new Set(),
+  persistedOrders: [],
 };
+
+async function ensureDataDir() {
+  await fs.mkdir(DATA_DIR, { recursive: true });
+}
+
+async function loadPersistentState() {
+  try {
+    await ensureDataDir();
+    const raw = await fs.readFile(DATA_PATH, 'utf-8');
+    const parsed = JSON.parse(raw);
+    state.focusedMarkets = new Set(parsed.focusedMarkets || []);
+    state.persistedOrders = parsed.orders || [];
+  } catch (err) {
+    // Ignore missing file on first boot
+    if (err.code !== 'ENOENT') {
+      console.error('Failed to load persistent state', err);
+    }
+  }
+}
+
+async function savePersistentState() {
+  const payload = {
+    focusedMarkets: Array.from(state.focusedMarkets),
+    orders: state.persistedOrders,
+  };
+  await ensureDataDir();
+  await fs.writeFile(DATA_PATH, JSON.stringify(payload, null, 2));
+}
 
 function authHeader() {
   if (!API_KEY || !API_SECRET) return {};
@@ -76,6 +124,12 @@ async function fetchKalshi(path, options = {}) {
 
   if (resp.status === 204) return null;
   return resp.json();
+}
+
+function asyncHandler(fn) {
+  return function wrapped(req, res, next) {
+    Promise.resolve(fn(req, res, next)).catch(next);
+  };
 }
 
 async function fetchMarketsByCategory(category) {
@@ -115,13 +169,13 @@ async function loadAllowedMarkets() {
   return markets;
 }
 
-app.get('/api/markets', async (_req, res) => {
+app.get('/api/markets', asyncHandler(async (_req, res) => {
   if (!ensureAuth(res)) return;
   const markets = await loadAllowedMarkets();
   return res.json({ markets });
-});
+}));
 
-app.get('/api/trades', async (_req, res) => {
+app.get('/api/trades', asyncHandler(async (_req, res) => {
   if (!ensureAuth(res)) return;
   const data = await fetchKalshi('/orders?status=open');
   const trades = Array.isArray(data?.orders)
@@ -137,9 +191,9 @@ app.get('/api/trades', async (_req, res) => {
       }))
     : [];
   res.json({ trades });
-});
+}));
 
-app.get('/api/account', async (_req, res) => {
+app.get('/api/account', asyncHandler(async (_req, res) => {
   if (!ensureAuth(res)) return;
   const data = await fetchKalshi('/portfolio');
   if (!data) return res.status(502).json({ error: 'Unable to fetch portfolio from Kalshi' });
@@ -151,7 +205,27 @@ app.get('/api/account', async (_req, res) => {
     pnl: data.realized_pnl ?? data.unrealized_pnl ?? null,
   };
   res.json({ portfolio });
-});
+}));
+
+app.get('/api/portfolio', asyncHandler(async (_req, res) => {
+  if (!ensureAuth(res)) return;
+  const data = await fetchKalshi('/portfolio');
+  if (!data) return res.status(502).json({ error: 'Unable to fetch portfolio from Kalshi' });
+  const portfolio = {
+    buying_power: data.buying_power ?? data.available_balance ?? null,
+    cash: data.cash ?? null,
+    positions: data.positions ?? [],
+    total_value: data.total_value ?? null,
+    pnl: {
+      realized: data.realized_pnl ?? 0,
+      unrealized: data.unrealized_pnl ?? 0,
+    },
+    margin: data.margin_used ?? null,
+    leverage: data.leverage ?? null,
+    open_orders: state.persistedOrders,
+  };
+  res.json({ portfolio });
+}));
 
 app.get('/api/logs', (_req, res) => {
   res.json({ logs: state.logs });
@@ -161,11 +235,19 @@ app.get('/api/research', (_req, res) => {
   res.json({ reports: state.research });
 });
 
-app.post('/api/orders', async (req, res) => {
+app.post('/api/orders', asyncHandler(async (req, res) => {
   if (!ensureAuth(res)) return;
-  const { ticker, side, price, size, type = 'limit' } = req.body || {};
+  const { ticker, side, price, size, type = 'limit', maxCostCents, killSwitch } = req.body || {};
   if (!ticker || !side || !price || !size) {
     return res.status(400).json({ error: 'ticker, side, price, and size are required' });
+  }
+
+  const cost = Number(price) * Number(size);
+  if (maxCostCents && cost > maxCostCents) {
+    return res.status(400).json({ error: `Order blocked: cost ${cost} exceeds maxCostCents ${maxCostCents}` });
+  }
+  if (killSwitch) {
+    return res.status(400).json({ error: 'Kill-switch active: refusing to place orders.' });
   }
 
   const payload = {
@@ -183,17 +265,69 @@ app.post('/api/orders', async (req, res) => {
   });
 
   if (!result) return res.status(502).json({ error: 'Order rejected by Kalshi' });
+  state.persistedOrders.unshift({
+    ticker,
+    side,
+    price,
+    size,
+    placed_at: new Date().toISOString(),
+    status: result.status ?? 'submitted',
+    order_id: result.id ?? result.order_id ?? undefined,
+  });
+  state.persistedOrders = state.persistedOrders.slice(0, 100);
+  await savePersistentState();
   res.json({ order: result });
-});
+}));
 
-app.post('/api/arbitrage/focus', (req, res) => {
+app.post('/api/arbitrage/focus', asyncHandler(async (req, res) => {
   const { marketIds } = req.body ?? {};
   if (Array.isArray(marketIds)) {
     state.focusedMarkets = new Set(marketIds);
+    await savePersistentState();
   }
   res.json({ focused: Array.from(state.focusedMarkets) });
+}));
+
+app.get('/api/markets/:ticker/orderbook/stream', asyncHandler(async (req, res) => {
+  if (!ensureAuth(res)) return;
+  const { ticker } = req.params;
+  res.set({
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    Connection: 'keep-alive',
+  });
+  res.flushHeaders?.();
+
+  let active = true;
+  req.on('close', () => {
+    active = false;
+  });
+
+  async function pushSnapshot() {
+    if (!active) return;
+    const snapshot = await fetchKalshi(`/markets/${ticker}/orderbook`);
+    if (snapshot) {
+      res.write(`event: depth\n`);
+      res.write(`data: ${JSON.stringify(snapshot)}\n\n`);
+    }
+  }
+
+  // send first snapshot immediately then poll every 5s
+  await pushSnapshot();
+  const interval = setInterval(pushSnapshot, 5000);
+
+  req.on('close', () => {
+    clearInterval(interval);
+  });
+}));
+
+app.use((err, _req, res, _next) => {
+  console.error('Unhandled error', err);
+  res.status(500).json({ error: 'Unexpected server error', detail: err?.message });
 });
 
-app.listen(PORT, () => {
-  console.log(`Kalshi arb backend listening on port ${PORT}`);
+loadPersistentState().finally(() => {
+  app.listen(PORT, () => {
+    console.log(`Kalshi arb backend listening on port ${PORT}`);
+  });
 });

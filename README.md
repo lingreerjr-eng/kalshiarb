@@ -4,7 +4,7 @@
 This repository now includes a minimal backend + frontend pairing for a Kalshi-focused arbitrage dashboard and research assistant. The backend proxies to Kalshi with credential-based requests and filters to live **Sports, Crypto, and Financials** markets. The frontend renders live markets, trades, research context, and lets you focus the arbitrage engine on specific markets via per-market checkboxes.
 
 ## Core Features
-- **Backend proxy:** Express server that reads Kalshi credentials from the environment, fetches **live Sports, Crypto, and Financials markets** from the Kalshi Trading API, and stores focused market selections server-side.
+- **Backend proxy:** Express server that reads Kalshi credentials from the environment, fetches **live Sports, Crypto, and Financials markets** from the Kalshi Trading API, and stores focused market selections plus order history server-side (persisted to `backend/data/state.json`).
 - **Dashboard:** Live view of trades, research queue, and operational status.
 - **Arbitrage Engine UI:** Visualizes leg-in arbitrage opportunities and lets you focus on specific markets independently with checkboxes.
 - **Research Analyst:** Structured research cards that can be backed by Ollama-powered analysis.
@@ -77,8 +77,10 @@ Use OS-level secret stores or deployment-specific secret managers for production
 ## Running the Backend Arbitrage Engine
 - The backend currently exposes REST endpoints for markets, trades (open orders), research reports, logs, focused market updates, account summary, and order placement.
 - With Kalshi credentials set, `/api/markets` fetches live Sports, Crypto, and Financials markets from Kalshi using `/markets?category=...` filters. Missing credentials return `401` to avoid silent fallbacks.
-- The `/api/orders` endpoint forwards limit orders so the AI can buy/sell on your behalf; ensure prices/sizes are safe before enabling.
+- The `/api/orders` endpoint forwards limit orders so the AI can buy/sell on your behalf; ensure prices/sizes are safe before enabling. Order submissions are saved server-side for the dashboard.
 - The `/api/arbitrage/focus` endpoint stores the checkbox-selected markets so the arbitrage loop can scope scans and orders to those tickers.
+- `/api/portfolio` polls Kalshi portfolio state and augments it with the persisted order list so the UI can display PnL, margin, and recent orders on an interval.
+- `/api/markets/:ticker/orderbook/stream` exposes a server-sent events (SSE) feed of order book snapshots for depth-aware arbitrage timing.
 
 ## Running the Frontend Dashboard
 - Configure `VITE_BACKEND_URL` (or equivalent env var for your bundler) to point to the backend API, defaulting to `http://localhost:4000/api`.
@@ -134,5 +136,5 @@ npm run dev
 
 ## Limitations
 - Trades/logs/research endpoints still return deterministic data; wire them to Kalshi account endpoints and persistent storage before production use.
-- Order placement is forwarded to Kalshi, but no risk checks, hedging, or kill-switches are implemented. Add guards before live trading.
+- Order placement is forwarded to Kalshi with client-side caps/kill-switches, but no portfolio-level hedging or automated guardrails beyond the configured thresholds.
 - The UI references shared component libraries (`@/components/ui/*`) that must exist in your build environment.

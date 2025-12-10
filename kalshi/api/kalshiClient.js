@@ -60,6 +60,10 @@ export const kalshiClient = {
       const { portfolio } = await request('/account');
       return portfolio;
     },
+    portfolio: async () => {
+      const { portfolio } = await request('/portfolio');
+      return portfolio;
+    },
   },
   orders: {
     place: async (order) => {
@@ -68,6 +72,25 @@ export const kalshiClient = {
         body: order,
       });
       return result;
+    },
+    recent: async () => {
+      const { portfolio } = await request('/portfolio');
+      return portfolio?.open_orders ?? [];
+    },
+  },
+  marketData: {
+    streamOrderBook: ({ ticker, onDepth }) => {
+      const url = `${API_BASE}/markets/${ticker}/orderbook/stream`;
+      const source = new EventSource(url);
+      source.addEventListener('depth', (event) => {
+        try {
+          const payload = JSON.parse(event.data);
+          onDepth?.(payload);
+        } catch (err) {
+          console.error('Failed to parse orderbook depth', err);
+        }
+      });
+      return () => source.close();
     },
   },
 };
