@@ -1,0 +1,101 @@
+{
+  "name": "ResearchReport",
+  "type": "object",
+  "properties": {
+    "market_query": {
+      "type": "string"
+    },
+    "base_rate": {
+      "type": "number"
+    },
+    "adjustment_factor": {
+      "type": "number"
+    },
+    "final_probability": {
+      "type": "number"
+    },
+    "scenarios": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "probability": {
+            "type": "number"
+          },
+          "description": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "factors": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "factor": {
+            "type": "string"
+          },
+          "impact_score": {
+            "type": "number",
+            "description": "0-100 score of impact"
+          },
+          "confidence": {
+            "type": "number",
+            "description": "0-100 confidence in this factor"
+          },
+          "direction": {
+            "type": "string",
+            "enum": [
+              "positive",
+              "negative"
+            ]
+          },
+          "description": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "historical_precedents": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "event_name": {
+            "type": "string"
+          },
+          "year": {
+            "type": "string"
+          },
+          "similarity_score": {
+            "type": "number"
+          },
+          "outcome": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "processing",
+        "completed",
+        "failed"
+      ]
+    },
+    "file_urls": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "required": [
+    "market_query"
+  ]
+}

@@ -1,0 +1,38 @@
+{
+  "name": "Market",
+  "type": "object",
+  "properties": {
+    "market_id": {
+      "type": "string"
+    },
+    "title": {
+      "type": "string"
+    },
+    "yes_price": {
+      "type": "number",
+      "description": "Price in cents"
+    },
+    "no_price": {
+      "type": "number",
+      "description": "Price in cents"
+    },
+    "volume": {
+      "type": "number"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "active",
+        "closed",
+        "suspended"
+      ]
+    },
+    "category": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "market_id",
+    "title"
+  ]
+}

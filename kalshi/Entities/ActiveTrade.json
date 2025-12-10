@@ -1,0 +1,52 @@
+{
+  "name": "ActiveTrade",
+  "type": "object",
+  "properties": {
+    "market_id": {
+      "type": "string"
+    },
+    "strategy_type": {
+      "type": "string",
+      "default": "leg_in_arbitrage"
+    },
+    "entry_leg": {
+      "type": "string",
+      "enum": [
+        "yes",
+        "no"
+      ]
+    },
+    "entry_price": {
+      "type": "number"
+    },
+    "target_exit_leg": {
+      "type": "string",
+      "enum": [
+        "yes",
+        "no"
+      ]
+    },
+    "target_exit_price": {
+      "type": "number"
+    },
+    "current_status": {
+      "type": "string",
+      "enum": [
+        "pending_entry",
+        "leg_1_filled",
+        "monitoring_leg_2",
+        "completed",
+        "failed"
+      ]
+    },
+    "total_cost_basis": {
+      "type": "number"
+    },
+    "potential_profit": {
+      "type": "number"
+    }
+  },
+  "required": [
+    "market_id"
+  ]
+}

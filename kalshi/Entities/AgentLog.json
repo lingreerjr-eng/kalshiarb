@@ -1,0 +1,33 @@
+{
+  "name": "AgentLog",
+  "type": "object",
+  "properties": {
+    "agent_name": {
+      "type": "string",
+      "enum": [
+        "Orchestrator",
+        "FactorAgent",
+        "HistoricalAgent",
+        "ScenarioAgent",
+        "ArbitrageBot"
+      ]
+    },
+    "action": {
+      "type": "string"
+    },
+    "details": {
+      "type": "string"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "related_entity_id": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "agent_name",
+    "action"
+  ]
+}
