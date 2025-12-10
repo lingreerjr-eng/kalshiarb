@@ -2,20 +2,20 @@ import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Activity, ArrowUpRight, TrendingUp, AlertTriangle, FileText, Cpu, Clock, Bot, Microscope } from "lucide-react";
-import { base44 } from '@/api/base44Client';
+import { kalshiClient } from '../api/kalshiClient';
 import { useQuery } from '@tanstack/react-query';
 import { format } from 'date-fns';
 
 export default function Home() {
   const { data: activeTrades } = useQuery({
     queryKey: ['activeTrades'],
-    queryFn: () => base44.entities.ActiveTrade.list(),
+    queryFn: () => kalshiClient.entities.ActiveTrade.list(),
     initialData: []
   });
 
   const { data: reports } = useQuery({
     queryKey: ['reports'],
-    queryFn: () => base44.entities.ResearchReport.list(),
+    queryFn: () => kalshiClient.entities.ResearchReport.list(),
     initialData: []
   });
 
