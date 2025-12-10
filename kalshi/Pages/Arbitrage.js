@@ -1,26 +1,44 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { base44 } from '@/api/base44Client';
+import { kalshiClient } from '../api/kalshiClient';
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { RefreshCw, Play, Pause, AlertCircle, ArrowRight, DollarSign, Timer } from "lucide-react";
+import { RefreshCw, Play, Pause, DollarSign, Timer, Settings } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
 export default function Arbitrage() {
   const [isRunning, setIsRunning] = useState(true);
-  
+  const [selectedMarkets, setSelectedMarkets] = useState(new Set());
+  const [executing, setExecuting] = useState(null);
+
   const { data: markets, isLoading } = useQuery({
     queryKey: ['markets'],
-    queryFn: () => base44.entities.Market.list(),
+    queryFn: () => kalshiClient.entities.Market.list(),
     initialData: []
   });
 
+  useEffect(() => {
+    if (markets.length > 0) {
+      setSelectedMarkets(new Set(markets.map((market) => market.market_id)));
+    }
+  }, [markets]);
+
+  useEffect(() => {
+    const focusedIds = Array.from(selectedMarkets);
+    kalshiClient.arbitrage.setFocusedMarkets(focusedIds);
+  }, [selectedMarkets]);
+
+  const visibleMarkets = useMemo(() => {
+    if (selectedMarkets.size === 0) return markets;
+    return markets.filter((market) => selectedMarkets.has(market.market_id));
+  }, [markets, selectedMarkets]);
+
   // Simulated logic to find leg-in opportunities
-  const opportunities = markets.map(market => {
+  const opportunities = visibleMarkets.map(market => {
     // Arbitrary target for demo: assuming we can buy the other side 10c cheaper than current if we wait
-    const targetNoPrice = Math.max(1, market.no_price - 15); 
+    const targetNoPrice = Math.max(1, market.no_price - 15);
     const totalCost = market.yes_price + targetNoPrice;
     const potentialProfit = 100 - totalCost;
     
@@ -32,6 +50,24 @@ export default function Arbitrage() {
       isViable: potentialProfit > 10 // Only show if >10c profit
     };
   }).filter(o => o.isViable);
+
+  async function handleExecute(opp) {
+    setExecuting(opp.market_id);
+    try {
+      await kalshiClient.orders.place({
+        ticker: opp.market_id,
+        side: 'yes',
+        price: opp.yes_price,
+        size: 1,
+      });
+      alert(`Submitted limit buy for ${opp.market_id} @ ${opp.yes_price}c`);
+    } catch (err) {
+      console.error(err);
+      alert('Failed to submit order. Check backend logs and credentials.');
+    } finally {
+      setExecuting(null);
+    }
+  }
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
@@ -68,7 +104,9 @@ export default function Arbitrage() {
               <RefreshCw className={`w-4 h-4 text-emerald-500 ${isRunning ? 'animate-spin' : ''}`} />
               Live Opportunities
             </h2>
-            <span className="text-xs text-gray-500 font-mono">SCANNING 14 MKTS/SEC</span>
+            <span className="text-xs text-gray-500 font-mono">
+              {selectedMarkets.size || markets.length} MKTS SELECTED
+            </span>
           </div>
 
           <div className="space-y-3">
@@ -94,6 +132,25 @@ export default function Arbitrage() {
                       </div>
                       <h3 className="font-medium text-gray-200">{opp.title}</h3>
                     </div>
+                    <label className="flex items-center gap-2 text-xs text-gray-400">
+                      <input
+                        type="checkbox"
+                        className="form-checkbox text-emerald-500"
+                        checked={selectedMarkets.has(opp.market_id)}
+                        onChange={() => {
+                          setSelectedMarkets((prev) => {
+                            const next = new Set(prev);
+                            if (next.has(opp.market_id)) {
+                              next.delete(opp.market_id);
+                            } else {
+                              next.add(opp.market_id);
+                            }
+                            return next;
+                          });
+                        }}
+                      />
+                      Focus market
+                    </label>
                     <div className="text-right">
                       <div className="text-2xl font-bold text-emerald-400 font-mono flex items-center justify-end gap-1">
                         <DollarSign className="w-4 h-4" />
@@ -139,8 +196,13 @@ export default function Arbitrage() {
                   </div>
                   
                   <div className="mt-4 flex justify-end">
-                     <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white font-mono text-xs">
-                       EXECUTE STRATEGY
+                     <Button
+                       size="sm"
+                       className="bg-emerald-600 hover:bg-emerald-700 text-white font-mono text-xs"
+                       onClick={() => handleExecute(opp)}
+                       disabled={!!executing}
+                     >
+                       {executing === opp.market_id ? 'Submitting…' : 'EXECUTE STRATEGY'}
                      </Button>
                   </div>
                 </motion.div>
@@ -191,5 +253,3 @@ export default function Arbitrage() {
     </div>
   );
 }
-// ... keep existing code (imports) ...
-import { Settings } from "lucide-react";

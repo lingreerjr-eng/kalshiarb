@@ -1,6 +1,6 @@
 import React from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { base44 } from '@/api/base44Client';
+import { kalshiClient } from '../api/kalshiClient';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Terminal, RefreshCw, Filter } from "lucide-react";
 import { format } from 'date-fns';
@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 export default function Logs() {
   const { data: logs, isLoading } = useQuery({
     queryKey: ['logs'],
-    queryFn: () => base44.entities.AgentLog.list({ sort: { timestamp: -1 }, limit: 50 }),
+    queryFn: () => kalshiClient.entities.AgentLog.list({ sort: { timestamp: -1 }, limit: 50 }),
     initialData: []
   });
 
