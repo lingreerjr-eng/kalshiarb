@@ -16,6 +16,13 @@ backend/
   package.json           # Express backend dependencies
   server.js              # API proxy (Kalshi live data + deterministic logs/research placeholders)
 kalshi/
+  index.html             # Vite entry HTML
+  main.jsx               # React/Vite entry point with routing + query client
+  index.css              # Tailwind base styles
+  vite.config.js         # Vite config + @ alias
+  tailwind.config.js     # Tailwind content scan configuration
+  postcss.config.js      # PostCSS + Tailwind plumbing
+  components/ui/         # Minimal UI primitives (Card, Button, Badge, Input)
   api/
     kalshiClient.js      # Frontend client that talks to the backend API
   Entities/              # JSON schemas describing domain entities
@@ -60,11 +67,11 @@ Use OS-level secret stores or deployment-specific secret managers for production
    npm install
    npm start
    ```
-4. In a separate terminal, install frontend dependencies (if not already installed for your React app) and start the dashboard. Ensure your tooling resolves `@/components/ui/*` to your design system or replace those imports with equivalents.
+4. In a separate terminal, install frontend dependencies from the new `kalshi/package.json` and start the dashboard.
    ```bash
-   cd ..
-   npm install  # if your frontend package.json exists alongside this repo
-   npm run dev
+   cd kalshi
+   npm install
+   npm run dev  # or npm run build for a production bundle
    ```
 
 ## Running the Backend Arbitrage Engine
